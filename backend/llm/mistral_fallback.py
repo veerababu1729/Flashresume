@@ -9,7 +9,7 @@ load_dotenv()
 MISTRAL_R1_CHAIN = [
     "mistral-large-latest",   # ~6s — best quality
     "mistral-medium-latest",
-    "open-mistral-nemo",      # ~4s — fastest fallback
+    "open-mistral-nemo",      # ~4s — fastest fallback model
 ]
 
 MISTRAL_R2_CHAIN = [
