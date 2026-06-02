@@ -106,10 +106,10 @@ async def _call_aicredits_single(get_client_fn, model: str, prompt: str, max_tok
 
     return {"success": False, "text": None, "model": None, "speed": None, "attempts": attempts}
 
-async def call_single_aicredits_r1(model: str, prompt: str, max_tokens: int = 2500) -> dict:
+async def call_single_aicredits_r1(model: str, prompt: str, max_tokens: int = 8000) -> dict:
     """Call an AICredits model for R1 (Analysis)."""
     return await _call_aicredits_single(_get_client, model, prompt, max_tokens)
 
-async def call_single_aicredits_r2(model: str, prompt: str, max_tokens: int = 4000) -> dict:
+async def call_single_aicredits_r2(model: str, prompt: str, max_tokens: int = 8000) -> dict:
     """Call an AICredits model for R2 (Generation)."""
     return await _call_aicredits_single(_get_client, model, prompt, max_tokens)
