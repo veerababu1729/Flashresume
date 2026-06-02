@@ -12,8 +12,8 @@ from .aicredits_fallback  import call_single_aicredits_r1,  call_single_aicredit
 _LLM_SEMAPHORE = asyncio.Semaphore(5)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_R1_MAX_TOKENS = 2500
-_R2_MAX_TOKENS = 4500
+_R1_MAX_TOKENS = 8000
+_R2_MAX_TOKENS = 8000
 
 # ── Per-Model Circuit Breaker State ───────────────────────────────
 _COOLDOWN_SECS_429 = 120

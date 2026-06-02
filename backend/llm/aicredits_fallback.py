@@ -44,22 +44,6 @@ def _extract_text(response) -> str | None:
         if not text:
             return None
             
-        # Clean markdown code blocks (important for JSON)
-        if text.startswith("```"):
-            parts = text.split("```")
-            text = parts[1] if len(parts) > 1 else text
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-            
-        # If it's supposed to be JSON, aggressively extract the JSON object
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            text = match.group(0)
-            
-        if len(text.strip()) < 5:
-            return None
-            
         return text
     except (AttributeError, IndexError, TypeError):
         return None
