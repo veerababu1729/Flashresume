@@ -1,9 +1,13 @@
 import os
 import re
 import time
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+print(f"[AICredits] API Key loaded: {'YES' if os.getenv('AICREDITS_API_KEY') else '❌ MISSING'}")
 
 # -------------------------------------------------------------------
 # AICredits API Client
