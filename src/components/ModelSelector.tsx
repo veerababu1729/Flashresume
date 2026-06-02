@@ -12,6 +12,7 @@ interface ModelSelectorProps {
 export const MODELS = {
   r1_preferred_model: [
     { id: "", name: "Auto (Fastest Available)" },
+    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (AICredits)" },
     { id: "mistral-large-latest", name: "Mistral Large (Mistral)" },
     { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Groq)" },
     { id: "mistralai/mistral-medium-3.5-128b", name: "Mistral Medium 3.5 (NVIDIA)" },
@@ -28,6 +29,7 @@ export const MODELS = {
   ],
   preferred_model: [
     { id: "", name: "Auto (Best Quality Available)" },
+    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (AICredits)" },
     { id: "mistral-large-latest", name: "Mistral Large (Mistral)" },
     { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Groq)" },
     { id: "mistralai/mistral-medium-3.5-128b", name: "Mistral Medium 3.5 (NVIDIA)" },

@@ -5,6 +5,7 @@ from supabase_client import supabase
 from .mistral_fallback    import call_single_mistral_r1,    call_single_mistral_r2
 from .groq_fallback       import call_single_groq_r1,       call_single_groq_r2
 from .nvidia_fallback     import call_single_nvidia_r1,     call_single_nvidia_r2
+from .aicredits_fallback  import call_single_aicredits_r1,  call_single_aicredits_r2
 
 # ── Concurrency guard ────────────────────────────────────────────────────────
 # Limits simultaneous LLM operations to 8 per worker process.
@@ -37,6 +38,7 @@ def _trip_circuit(model_id: str, error_type: str):
 
 # ── TOP PREFERRED MODELS — Round-Robin Pools ─────────────────────
 _RR_POOL_R1 = [
+    ("aicredits", "deepseek/deepseek-v4-flash",                    call_single_aicredits_r1),
     ("mistral", "mistral-large-latest",                        call_single_mistral_r1),
     ("groq",    "llama-3.3-70b-versatile",                     call_single_groq_r1),
     ("nvidia",  "mistralai/mistral-medium-3.5-128b",           call_single_nvidia_r1),
@@ -44,6 +46,7 @@ _RR_POOL_R1 = [
 ]
 
 _RR_POOL_R2 = [
+    ("aicredits", "deepseek/deepseek-v4-flash",                    call_single_aicredits_r2),
     ("mistral", "mistral-large-latest",                        call_single_mistral_r2),
     ("groq",    "llama-3.3-70b-versatile",                     call_single_groq_r2),
     ("nvidia",  "mistralai/mistral-medium-3.5-128b",           call_single_nvidia_r2),
@@ -97,6 +100,7 @@ async def _get_next_rr_index_r2() -> int:
 # FLAT CHAINS (Fallback if all pool models trip)
 # -----------------------------------------------------------------------------
 _R1_FLAT = [
+    ("aicredits",  "deepseek/deepseek-v4-flash",                  call_single_aicredits_r1),
     ("mistral",    "mistral-large-latest",                        call_single_mistral_r1),
     ("groq",       "llama-3.3-70b-versatile",                     call_single_groq_r1),
     ("nvidia",     "mistralai/mistral-medium-3.5-128b",           call_single_nvidia_r1),
@@ -113,6 +117,7 @@ _R1_FLAT = [
 ]
 
 _R2_FLAT = [
+    ("aicredits",  "deepseek/deepseek-v4-flash",                  call_single_aicredits_r2),
     ("mistral",    "mistral-large-latest",                        call_single_mistral_r2),
     ("groq",       "llama-3.3-70b-versatile",                     call_single_groq_r2),
     ("nvidia",     "mistralai/mistral-medium-3.5-128b",           call_single_nvidia_r2),
