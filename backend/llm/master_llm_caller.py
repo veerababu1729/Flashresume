@@ -38,6 +38,7 @@ def _trip_circuit(model_id: str, error_type: str):
 
 # ── WATERFALL CHAINS (Primary -> Fallbacks) ──────────────────────────────────
 _R1_CHAIN = [
+    ("aicredits",  "openai/gpt-4o-mini",                          call_single_aicredits_r1),
     ("aicredits",  "deepseek/deepseek-v4-flash",                  call_single_aicredits_r1),
     ("mistral",    "mistral-large-latest",                        call_single_mistral_r1),
     ("groq",       "llama-3.3-70b-versatile",                     call_single_groq_r1),
@@ -55,6 +56,7 @@ _R1_CHAIN = [
 ]
 
 _R2_CHAIN = [
+    ("aicredits",  "openai/gpt-4o-mini",                          call_single_aicredits_r2),
     ("aicredits",  "deepseek/deepseek-v4-flash",                  call_single_aicredits_r2),
     ("mistral",    "mistral-large-latest",                        call_single_mistral_r2),
     ("groq",       "llama-3.3-70b-versatile",                     call_single_groq_r2),
