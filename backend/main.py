@@ -72,7 +72,7 @@ _peak_load_lock = asyncio.Lock()  # Prevents race condition during lazy-load
 
 
 @app.on_event("startup")
-async def load_peak_on_startup():
+async def startup_event():
     """Eagerly load the persisted peak from Supabase at server boot.
     This eliminates the lazy-load race condition where multiple simultaneous
     pings all see peak_record["count"] == -1 and potentially overwrite Supabase

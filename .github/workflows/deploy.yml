@@ -1,0 +1,22 @@
+name: Deploy FlashResume to Render
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render API Deployment
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
+          method: 'GET'
+          
+      - name: Trigger Render Worker Deployment
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.RENDER_WORKER_DEPLOY_HOOK }}
+          method: 'GET'

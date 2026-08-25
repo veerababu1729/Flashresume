@@ -237,7 +237,7 @@ export async function generateResume(
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(180000), // 180s timeout (generation is slower)
+      signal: AbortSignal.timeout(30000), // Quick timeout for ingestion
     });
 
     if (!res.ok) {
@@ -245,10 +245,32 @@ export async function generateResume(
       throw new Error(`Generation failed (${res.status}): ${errorText}`);
     }
 
-    return await res.json();
+    const { job_id } = await res.json();
+    if (!job_id) {
+      throw new Error("Failed to retrieve job ID from server.");
+    }
+
+    // Polling logic
+    let attempts = 0;
+    while (attempts < 60) { // Max 3 mins (60 * 3s)
+      await new Promise(r => setTimeout(r, 3000));
+      const statusRes = await fetch(`${BASE}/api/jobs/${job_id}/status`);
+      if (!statusRes.ok) continue;
+
+      const statusData = await statusRes.json();
+      if (statusData.status === "complete") {
+        return statusData.result as TemplateV1;
+      }
+      if (statusData.status === "failed") {
+        throw new Error(`Generation failed: ${statusData.error}`);
+      }
+      attempts++;
+    }
+    
+    throw new Error("Generation timed out while waiting for worker. Please try again.");
   } catch (err: any) {
     if (err.name === "TimeoutError") {
-      throw new Error("Generation timed out. The AI is taking longer than expected. Please try again.");
+      throw new Error("Request timed out. The AI is taking longer than expected. Please try again.");
     }
     throw new Error(err.message || "Failed to generate resume. Please try again.");
   }
