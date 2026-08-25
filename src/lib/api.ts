@@ -2,7 +2,7 @@
 // All backend calls with error handling and timeouts
 import { supabase } from "./supabase";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "https://flashresume-backend.onrender.com";
 
 // ────────────────────────────────────────────────────────────────────────────
 // STEP 1: Parse Resume (PDF Upload or Text Paste)
