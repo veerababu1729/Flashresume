@@ -254,6 +254,10 @@ async def get_analytics_revenue(
 
         breakdown = [
             {
+                "name": "Standard", "price": 499, "users": plan_counts.get("regular", 0), "mrr": plan_mrr.get("regular", 0),
+                "color": "bg-amber-50", "textColor": "text-amber-700", "barColor": "bg-gradient-to-r from-amber-500 to-amber-400"
+            },
+            {
                 "name": "Student", "price": 149, "users": plan_counts.get("student", 0), "mrr": plan_mrr.get("student", 0),
                 "color": "bg-[#12f8d7]/15", "textColor": "text-[#006859]", "barColor": "bg-gradient-to-r from-[#006859] to-[#12f8d7]"
             },

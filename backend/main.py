@@ -71,6 +71,12 @@ peak_record = {"count": -1, "timestamp": None}
 _peak_upsert_tasks: set = set()  # Hold references to prevent GC
 _peak_load_lock = asyncio.Lock()  # Prevents race condition during lazy-load
 
+# ── MAX plausible concurrent users cap ───────────────────────────────────────
+# Prevents stale-session accumulation from inflating the peak to absurd values.
+# A ping interval of 2 min + 3 min timeout = max 300 legit sessions at once.
+# We cap at 500 to leave a wide real-traffic margin but reject corrupted spikes.
+_MAX_PLAUSIBLE_PEAK = 500
+
 
 @app.on_event("startup")
 async def load_peak_on_startup():
@@ -78,6 +84,8 @@ async def load_peak_on_startup():
     This eliminates the lazy-load race condition where multiple simultaneous
     pings all see peak_record["count"] == -1 and potentially overwrite Supabase
     with a lower current count before the real peak is loaded.
+    Also resets obviously corrupt values (> _MAX_PLAUSIBLE_PEAK) caused by
+    stale session accumulation during low-traffic periods.
     """
     if not sc.supabase:
         peak_record["count"] = 0
@@ -90,14 +98,49 @@ async def load_peak_on_startup():
                 .execute()
         )
         if hasattr(res, 'data') and res.data and len(res.data) > 0:
-            peak_record["count"] = res.data[0]["value"].get("count", 0)
-            peak_record["timestamp"] = res.data[0]["value"].get("timestamp")
+            stored_count = res.data[0]["value"].get("count", 0)
+            stored_ts = res.data[0]["value"].get("timestamp")
+            if stored_count > _MAX_PLAUSIBLE_PEAK:
+                # Corrupt value — reset to 0 and clear from DB
+                print(f"[Startup] Corrupt peak detected ({stored_count}), resetting to 0.")
+                peak_record["count"] = 0
+                peak_record["timestamp"] = None
+                await asyncio.to_thread(
+                    lambda: sc.supabase.table("system_metrics").upsert({
+                        "id": "peak_concurrent_users",
+                        "value": {"count": 0, "timestamp": None}
+                    }).execute()
+                )
+            else:
+                peak_record["count"] = stored_count
+                peak_record["timestamp"] = stored_ts
         else:
             peak_record["count"] = 0
         print(f"[Startup] Peak concurrent loaded: {peak_record['count']} (at {peak_record['timestamp']})")
     except Exception as e:
         print(f"[Startup] Failed to load peak concurrent (non-fatal): {e}")
         peak_record["count"] = 0
+
+
+async def _stale_session_cleanup_loop():
+    """Background task: evicts stale sessions every 60s.
+    Previously, stale cleanup ONLY happened during incoming ping requests.
+    During low-traffic windows (e.g. 3 AM), no pings arrived, so sessions
+    from earlier busy hours accumulated in ACTIVE_SESSIONS for hours and
+    inflated peak_concurrent_users to impossibly high values (e.g. 1051).
+    This loop ensures stale entries are always cleaned up regardless of traffic.
+    """
+    while True:
+        await asyncio.sleep(60)
+        now = datetime.now(timezone.utc)
+        stale = [k for k, v in list(ACTIVE_SESSIONS.items()) if (now - v).total_seconds() > 180]
+        for k in stale:
+            ACTIVE_SESSIONS.pop(k, None)
+
+
+@app.on_event("startup")
+async def start_cleanup_loop():
+    asyncio.create_task(_stale_session_cleanup_loop())
 
 class PingRequest(BaseModel):
     user_id: str
@@ -117,6 +160,12 @@ async def ping_presence(data: PingRequest):
         del ACTIVE_SESSIONS[k]
         
     current_count = len(ACTIVE_SESSIONS)
+
+    # Safety cap: if current_count is implausibly high (bug / stale accumulation),
+    # don't let it become the new peak. This is the last-resort guard.
+    if current_count > _MAX_PLAUSIBLE_PEAK:
+        print(f"[Presence] Implausible current_count={current_count}, skipping peak update.")
+        return {"status": "ok", "live": current_count}
     
     # Fallback lazy-load in case startup event didn't complete (e.g. Supabase was slow).
     # Double-checked lock prevents multiple simultaneous pings from all racing to load
@@ -127,7 +176,9 @@ async def ping_presence(data: PingRequest):
                 try:
                     res = await asyncio.to_thread(lambda: sc.supabase.table("system_metrics").select("value").eq("id", "peak_concurrent_users").execute())
                     if hasattr(res, 'data') and res.data and len(res.data) > 0:
-                        peak_record["count"] = res.data[0]["value"].get("count", 0)
+                        loaded = res.data[0]["value"].get("count", 0)
+                        # Apply same plausibility guard on the loaded value
+                        peak_record["count"] = loaded if loaded <= _MAX_PLAUSIBLE_PEAK else 0
                         peak_record["timestamp"] = res.data[0]["value"].get("timestamp")
                     else:
                         peak_record["count"] = 0

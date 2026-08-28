@@ -37,7 +37,7 @@ class OrderRequest(BaseModel):
 async def create_order(request: Request, body: OrderRequest, authorization: str = Header(None)):
     PRICES = {
         "pay_per_use": 2900,
-        "regular": 69900,
+        "regular": 49900,
         "bulk_offer": 59900,
         "student": 14900
     }
@@ -220,7 +220,7 @@ async def verify_payment(body: VerifyRequest, authorization: str = Header(None))
                             # Plan amounts in rupees
                             PLAN_AMOUNTS_INR = {
                                 "pay_per_use": 29,
-                                "regular": 599,
+                                "regular": 499,
                                 "bulk_offer": 599,
                                 "student": 149,
                             }

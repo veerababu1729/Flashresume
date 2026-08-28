@@ -67,8 +67,8 @@ const PLAN_BULK_OFFER = {
 const PLAN_STANDARD = {
   id: "regular",
   name: "Standard Plan",
-  price: 699,
-  priceDisplay: "₹699",
+  price: 499,
+  priceDisplay: "₹499",
   period: "/2 Months",
   description: "500 Credits (50 Resumes)",
   icon: <Crown className="w-5 h-5 text-amber-400" />,
@@ -534,7 +534,7 @@ export default function PricingPopup({ isOpen, onClose, onSuccess, initialPlan, 
     const planDetails =
       planToBuy === "student" ? { amount: 149, plan_type: "student" } :
         planToBuy === "bulk_offer" ? { amount: 599, plan_type: "bulk_offer" } :
-          planToBuy === "regular" ? { amount: 599, plan_type: "regular" } :
+          planToBuy === "regular" ? { amount: 499, plan_type: "regular" } :
             { amount: 29, plan_type: "pay_per_use" };
 
     try {
