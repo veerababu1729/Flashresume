@@ -693,11 +693,11 @@ async def _send_email_brevo(to_email: str, display_name: str, resume_link: str) 
                 </p>
                 <p style='font-size:14px;color:#555;margin:0 0 24px;line-height:1.6;'>
                   Every day you delay, another candidate with a weaker resume gets shortlisted simply because they applied first.<br>
-                  <strong style='color:#006859;'>Don&#8217;t let that be you.</strong>
+                  <strong style='color:#006859;'>Don&#8217;t let that be you. click below👇</strong>
                 </p>
 
                 <div style='background:#006859;border-radius:10px;text-align:center;padding:18px;margin-top:8px;'>
-                  <a href='{resume_link}' style='color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;'>&#128640; Download &amp; Start Applying Now</a>
+                  <a href='{resume_link}' style='color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;'>&#128640; Download &amp; Your Resume Now</a>
                 </div>
 
                 <p style='font-size:13px;color:#888;margin:20px 0 0;line-height:1.6;text-align:center;'>
