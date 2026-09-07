@@ -43,3 +43,36 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;             /* Chrome/Safari */
 }
+
+/* ── DSA Notes Banner animation ──────────────────────────────────────── */
+@keyframes dsa-scroll {
+  0%      { transform: translateX(-110%); }
+  72%     { transform: translateX(320%); }
+  72.01%  { transform: translateX(-110%); }
+  100%    { transform: translateX(-110%); }
+}
+
+@keyframes dsa-text-fade {
+  0%   { opacity: 1; }
+  62%  { opacity: 1; }
+  72%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes dsa-btn-color {
+  0%   { background: #ffffff; color: #111827; border-color: #d1d5db; }
+  55%  { background: #ffffff; color: #111827; border-color: #d1d5db; }
+  72%  { background: #dc2626; color: #ffffff;  border-color: #dc2626; }
+  85%  { background: #dc2626; color: #ffffff;  border-color: #dc2626; }
+  100% { background: #ffffff; color: #111827; border-color: #d1d5db; }
+}
+
+.dsa-scroll-text {
+  animation: dsa-scroll 4s linear infinite;
+}
+.dsa-text-fade {
+  animation: dsa-text-fade 4s linear infinite;
+}
+.dsa-btn-animate {
+  animation: dsa-btn-color 4s linear infinite;
+}

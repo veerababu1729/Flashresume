@@ -901,10 +901,65 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* ── DSA Notes Row — logged-in users only ── */}
+        {currentUser && (
+          <div className="w-full border-t border-surface-container-low flex items-center justify-center px-4 py-1.5 overflow-hidden">
+            <div className="relative flex items-center overflow-hidden" style={{maxWidth: '560px', width: '100%'}}>
+              {/* Text scrolls left→right into the button — solid black, no fade */}
+              <motion.span
+                className="absolute left-0 whitespace-nowrap text-sm font-semibold z-10 pointer-events-none"
+                style={{ color: "#111827" }}
+                animate={{
+                  x:       ["-110%", "320%",  "-110%"],
+                  opacity: [1,        1,         0    ],
+                }}
+                transition={{
+                  duration: 4,
+                  times:    [0,       0.719,   0.721  ],
+                  repeat: Infinity,
+                  ease: "linear",
+                  repeatType: "loop",
+                }}
+              >
+                Complete DSA Notes:
+              </motion.span>
+              {/* Invisible spacer — keeps row height stable */}
+              <span className="whitespace-nowrap text-sm font-semibold opacity-0 select-none pointer-events-none" aria-hidden="true">
+                Complete DSA Notes:
+              </span>
+              {/* Click Here — white → red as text merges in, then resets */}
+              <motion.a
+                href="https://memecode.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto flex-shrink-0 relative z-20 flex items-center gap-1.5 border text-xs font-bold px-3.5 py-1 rounded-full shadow-sm"
+                animate={{
+                  backgroundColor: ["#ffffff", "#ffffff", "#dc2626", "#dc2626", "#ffffff"],
+                  color:            ["#111827", "#111827", "#ffffff", "#ffffff", "#111827"],
+                  borderColor:      ["#d1d5db", "#d1d5db", "#dc2626", "#dc2626", "#d1d5db"],
+                }}
+                transition={{
+                  duration: 4,
+                  times:    [0,      0.55,      0.72,      0.85,      1       ],
+                  repeat: Infinity,
+                  ease: "linear",
+                  repeatType: "loop",
+                }}
+              >
+                Click Here
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 flex-shrink-0">
+                  <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clipRule="evenodd" />
+                </svg>
+              </motion.a>
+            </div>
+          </div>
+        )}
+
+
       </nav>
 
-
-      <main className="pt-24">
+      <main className="pt-28">
         {/* Hero Section */}
         <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 md:py-16 flex flex-col items-center">
 
