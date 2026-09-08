@@ -68,13 +68,13 @@ export default function RevenuePanel() {
       setDateError("");
     }
 
-    let url = `/api/admin-proxy/analytics/revenue?time_filter=${timeFilter}&plan_filter=${planFilter}`;
+    let url = `${API_URL}/api/admin/analytics/revenue?time_filter=${timeFilter}&plan_filter=${planFilter}`;
     if (timeFilter === "custom" && startDate && endDate) {
       url += `&start_date=${startDate}T00:00:00Z&end_date=${endDate}T23:59:59Z`;
     }
 
     const fetchRevenue = () =>
-      fetch(url)
+      fetch(url, { headers: { 'X-Admin-Key': 'Flashresume@123' } })
         .then((res) => res.json())
         .then((d) => setData(d))
         .catch((e) => console.error("Failed to fetch revenue", e));

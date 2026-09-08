@@ -12,7 +12,7 @@ export default function FunnelChart() {
 
   useEffect(() => {
     const fetchFunnelStats = () => {
-      fetch(`/api/admin-proxy/funnel-stats`)
+      fetch(`${API_URL}/api/admin/funnel-stats`, { headers: { 'X-Admin-Key': 'Flashresume@123' } })
         .then(res => res.json())
         .then(data => {
           setStats(data.landing !== undefined ? data : { landing: 0, result: 0, purchases: 0 });

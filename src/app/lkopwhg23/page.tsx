@@ -181,7 +181,9 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch(`/api/admin-proxy/stats`);
+        const res = await fetch(`${API_URL}/api/admin/stats`, {
+          headers: { "X-Admin-Key": process.env.NEXT_PUBLIC_ADMIN_SECRET_KEY || "Flashresume@123" },
+        });
         const json = await res.json();
         const sec = json.uptime_seconds ?? 0;
         const h = Math.floor(sec / 3600);
@@ -209,7 +211,9 @@ export default function AdminPage() {
   // Fetch today's accurate sent count from Brevo API (source of truth)
   const fetchTodaySent = async () => {
     try {
-      const res = await fetch("/api/admin-proxy/cold-email-today");
+      const res = await fetch(`${API_URL}/api/admin/cold-email-today`, {
+        headers: { "X-Admin-Key": process.env.NEXT_PUBLIC_ADMIN_SECRET_KEY || "Flashresume@123" },
+      });
       const json = await res.json();
       setEmailStats({
         today_sent: json.today_sent ?? 0,

@@ -60,13 +60,13 @@ export default function DownloadChart() {
       setDateError("");
     }
 
-    let url = `/api/admin-proxy/analytics/downloads?time_filter=${timeFilter}&plan_filter=all`;
+    let url = `${API_URL}/api/admin/analytics/downloads?time_filter=${timeFilter}&plan_filter=all`;
     if (timeFilter === "custom" && startDate && endDate) {
       url += `&start_date=${startDate}T00:00:00Z&end_date=${endDate}T23:59:59Z`;
     }
 
     const fetchDownloads = () =>
-      fetch(url)
+      fetch(url, { headers: { 'X-Admin-Key': 'Flashresume@123' } })
         .then((res) => res.json())
         .then((d) => setData(d))
         .catch((e) => console.error("Failed to fetch download analytics", e));

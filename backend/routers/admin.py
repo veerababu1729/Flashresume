@@ -15,6 +15,22 @@ import httpx
 async def _sb(query):
     return await asyncio.to_thread(query.execute)
 
+# Helper: fetch ALL rows from a Supabase query by paginating through
+# the 1000-row default limit. Returns a combined list of all rows.
+async def _sb_paginated(build_query_fn, page_size=1000):
+    """Fetch all rows by paginating. build_query_fn returns a fresh query builder."""
+    all_data = []
+    offset = 0
+    while True:
+        q = build_query_fn().range(offset, offset + page_size - 1)
+        res = await asyncio.to_thread(q.execute)
+        rows = res.data or []
+        all_data.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_data
+
 load_dotenv()
 
 router = APIRouter()
@@ -75,10 +91,14 @@ async def get_admin_stats():
         # Fetch dev user IDs once so we can exclude them from all metrics
         dev_user_ids = await get_dev_user_ids()
 
-        payments_query = sc.supabase.table("payments").select("amount, user_id, plan_type").eq("status", "success").gte("created_at", PROD_START_ISO)
-        if dev_user_ids:
-            dev_ids_str = ",".join(dev_user_ids)
-            payments_query = payments_query.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+        # Payments: use paginated fetch to avoid 1000-row truncation
+        # This returns ALL rows across multiple pages
+        def build_payments_query():
+            q = sc.supabase.table("payments").select("amount, user_id, plan_type").eq("status", "success").gte("created_at", PROD_START_ISO)
+            if dev_user_ids:
+                dev_ids_str = ",".join(dev_user_ids)
+                q = q.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+            return q
 
         users_query = sc.supabase.table("users").select("id", count="exact").gte("created_at", PROD_START_ISO)
 
@@ -94,7 +114,7 @@ async def get_admin_stats():
         high_risk_query = sc.supabase.table("users").select("id", count="exact").gt("fraud_tracker_counter", 5)
 
         results = await asyncio.gather(
-            _sb(payments_query),
+            _sb_paginated(build_payments_query),
             _sb(downloads_query),
             _sb(users_query),
             _sb(visitors_query),
@@ -103,10 +123,10 @@ async def get_admin_stats():
             _sb(high_risk_query),
             return_exceptions=True,
         )
-        payments_res, downloads, users_res, visitors_res, failed_res, peak_res, high_risk_res = results
+        all_payments, downloads, users_res, visitors_res, failed_res, peak_res, high_risk_res = results
 
-        if not isinstance(payments_res, Exception) and payments_res.data:
-            stats["total_revenue"] = sum(p["amount"] for p in payments_res.data) // 100
+        if not isinstance(all_payments, Exception) and all_payments:
+            stats["total_revenue"] = sum(p["amount"] for p in all_payments) // 100
 
         if not isinstance(downloads, Exception):
             if hasattr(downloads, 'count') and downloads.count is not None:
@@ -114,9 +134,10 @@ async def get_admin_stats():
             else:
                 stats["total_downloads"] = len(downloads.data) if downloads.data else 0
 
-        # Paid Subscribers = unique users who paid at least once (regardless of current credits)
-        if not isinstance(payments_res, Exception):
-            active_user_ids = set(p["user_id"] for p in (payments_res.data or []) if p.get("user_id"))
+        # Paid Subscribers = unique users who paid at least once
+        # Uses paginated all_payments list (no 1000-row truncation)
+        if not isinstance(all_payments, Exception) and all_payments:
+            active_user_ids = set(p["user_id"] for p in all_payments if p.get("user_id"))
             stats["active_subs"] = len(active_user_ids)
 
         if not isinstance(users_res, Exception):
@@ -196,42 +217,46 @@ async def get_analytics_revenue(
         dev_user_ids = await get_dev_user_ids()
 
         # Fetch Payments — time-filtered, for revenue totals, trend, and breakdown.
-        payments_query = sc.supabase.table("payments").select("amount, plan_type, created_at, user_id").eq("status", "success")
-        if dt_start:
-            payments_query = payments_query.gte("created_at", dt_start.isoformat())
-        if dt_end:
-            payments_query = payments_query.lte("created_at", dt_end.isoformat())
-        if plan_filter != "all":
-            payments_query = payments_query.eq("plan_type", plan_filter)
-        if dev_user_ids:
-            payments_query = payments_query.not_.in_("user_id", dev_user_ids)
+        def build_payments_query():
+            q = sc.supabase.table("payments").select("amount, plan_type, created_at, user_id").eq("status", "success")
+            if dt_start:
+                q = q.gte("created_at", dt_start.isoformat())
+            if dt_end:
+                q = q.lte("created_at", dt_end.isoformat())
+            if plan_filter != "all":
+                q = q.eq("plan_type", plan_filter)
+            if dev_user_ids:
+                dev_ids_str = ",".join(dev_user_ids)
+                q = q.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+            return q
 
         # Active Subscriptions — unique users who currently have credits > 0.
         # Source of truth: credit_buckets table (remaining_credits column).
         # This matches exactly what result/page.tsx reads to check user access.
         # status IN ('active', 'queued', 'fallback') AND remaining_credits > 0
-        # Runs in PARALLEL with payments query — zero added latency.
-        active_users_query = (
-            sc.supabase.table("credit_buckets")
-            .select("user_id")
-            .in_("status", ["active", "queued", "fallback"])
-            .gt("remaining_credits", 0)
-        )
-        if dev_user_ids:
-            active_users_query = active_users_query.not_.in_("user_id", dev_user_ids)
+        def build_active_users_query():
+            q = (
+                sc.supabase.table("credit_buckets")
+                .select("user_id")
+                .in_("status", ["active", "queued", "fallback"])
+                .gt("remaining_credits", 0)
+            )
+            if dev_user_ids:
+                dev_ids_str = ",".join(dev_user_ids)
+                q = q.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+            return q
 
-        payments_res, active_users_res = await asyncio.gather(
-            _sb(payments_query),
-            _sb(active_users_query),
+        payments, active_users_res = await asyncio.gather(
+            _sb_paginated(build_payments_query),
+            _sb_paginated(build_active_users_query),
         )
-        payments = payments_res.data or []
 
         # Total Revenue — sum of all successful payments in the selected time window
         total_revenue = sum(p.get("amount", 0) for p in payments) // 100
 
         # Count DISTINCT users (one user can have multiple bucket rows)
         active_subscriptions = len(set(
-            r["user_id"] for r in (active_users_res.data or []) if r.get("user_id")
+            r["user_id"] for r in (active_users_res or []) if r.get("user_id")
         ))
 
         # Breakdown: count purchases and revenue per plan from payments
@@ -507,17 +532,18 @@ async def get_funnel_stats():
         result_q   = sc.supabase.table("page_visits").select("id", count="exact").eq("page_type", "result").is_("user_id", "null").gte("visited_at", PROD_START_ISO)
         
         # 3. Purchases: Fetch user_ids instead of count, to calculate unique paid users
-        purchase_q = sc.supabase.table("payments").select("user_id").eq("status", "success").gte("created_at", PROD_START_ISO)
-
-        # Exclude dev accounts from purchases
-        if dev_user_ids:
-            purchase_q = purchase_q.not_.in_("user_id", dev_user_ids)
+        def build_purchase_query():
+            q = sc.supabase.table("payments").select("user_id").eq("status", "success").gte("created_at", PROD_START_ISO)
+            if dev_user_ids:
+                dev_ids_str = ",".join(dev_user_ids)
+                q = q.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+            return q
 
         # All 3 queries in parallel — non-blocking
         landing, result, purchases = await asyncio.gather(
             _sb(landing_q),
             _sb(result_q),
-            _sb(purchase_q),
+            _sb_paginated(build_purchase_query),
         )
 
         def extract_count(res):
@@ -526,7 +552,7 @@ async def get_funnel_stats():
             return len(res.data) if res.data else 0
 
         # Unique paid users
-        unique_buyers = set(p["user_id"] for p in (purchases.data or []) if p.get("user_id"))
+        unique_buyers = set(p["user_id"] for p in (purchases or []) if p.get("user_id"))
 
         return {
             "landing": extract_count(landing),

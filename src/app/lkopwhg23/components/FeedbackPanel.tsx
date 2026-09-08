@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Star, MessageSquare, Clock, RefreshCw } from "lucide-react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 interface Feedback {
   id: string;
   rating: number;
@@ -21,7 +23,7 @@ export default function FeedbackPanel({ totalDownloads = 0 }: { totalDownloads?:
   const fetchFeedback = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin-proxy/feedback`);
+      const res = await fetch(`${API_URL}/api/admin/feedback`, { headers: { "X-Admin-Key": "Flashresume@123" } });
       const data = await res.json();
       // Handle both old (array) and new ({reviews, total_count}) response shapes
       if (Array.isArray(data)) {
