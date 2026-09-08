@@ -14,19 +14,21 @@ import RevenuePanel from "./components/RevenuePanel";
 import FunnelChart from "./components/FunnelChart";
 import FeedbackPanel from "./components/FeedbackPanel";
 import AffiliatePanel from "./components/AffiliatePanel";
+import PaymentHealthPanel from "./components/PaymentHealthPanel";
 // supabase import removed — Realtime channel replaced with lightweight backend poll
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const NAV_ITEMS = [
-  { id: "overview",   label: "Overview",       icon: LayoutDashboard },
-  { id: "revenue",    label: "Revenue",        icon: IndianRupee },
-  { id: "downloads",  label: "Downloads",      icon: Download },
-  { id: "llm",        label: "LLM Usage",      icon: Cpu },
-  { id: "funnel",     label: "Conversion",     icon: Filter },
-  { id: "feedback",   label: "Feedback",       icon: Star },
-  { id: "cold-email", label: "Cold Emails",    icon: Send },
-  { id: "affiliates", label: "Affiliates",     icon: Users },
+  { id: "overview",        label: "Overview",         icon: LayoutDashboard },
+  { id: "feedback",        label: "Feedback",         icon: Star },
+  { id: "revenue",         label: "Revenue",          icon: IndianRupee },
+  { id: "downloads",       label: "Downloads",        icon: Download },
+  { id: "llm",             label: "LLM Usage",        icon: Cpu },
+  { id: "funnel",          label: "Conversion",       icon: Filter },
+  { id: "cold-email",      label: "Cold Emails",      icon: Send },
+  { id: "payment-health",  label: "Payment Health",   icon: Server },
+  { id: "affiliates",      label: "Affiliates",       icon: Users },
 ];
 
 function Sidebar({
@@ -307,6 +309,11 @@ export default function AdminPage() {
             <KPICards onlineUsers={onlineUsers} stats={stats} />
           </section>
 
+          {/* -- Feedback ------------------------------------------- */}
+          <section id="feedback" ref={setRef("feedback")}>
+            <FeedbackPanel totalDownloads={stats.downloads} />
+          </section>
+
           {/* -- Revenue -------------------------------------------- */}
           <section id="revenue" ref={setRef("revenue")}>
             <RevenuePanel />
@@ -325,11 +332,6 @@ export default function AdminPage() {
           {/* -- Conversion Funnel ----------------------------------- */}
           <section id="funnel" ref={setRef("funnel")}>
             <FunnelChart />
-          </section>
-
-          {/* -- Feedback ------------------------------------------- */}
-          <section id="feedback" ref={setRef("feedback")}>
-            <FeedbackPanel totalDownloads={stats.downloads} />
           </section>
 
           {/* -- Cold Email Campaign --------------------------------- */}
@@ -404,6 +406,15 @@ export default function AdminPage() {
                 Without it the endpoint runs in mock mode (no emails sent).
               </p>
             </div>
+          </section>
+
+          {/* -- Payment Health -------------------------------------- */}
+          <section id="payment-health" ref={setRef("payment-health")}>
+            <SectionTitle
+              title="Payment Health"
+              subtitle="Cron-driven reconciliation of stuck payments and recovery queue"
+            />
+            <PaymentHealthPanel />
           </section>
 
           {/* -- Affiliates ------------------------------------------ */}

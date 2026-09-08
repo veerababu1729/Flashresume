@@ -622,21 +622,280 @@ async def razorpay_webhook(request: Request):
         print(f"Webhook error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/payments/reconcile")
-async def reconcile_payments(authorization: str = Header(None)):
+def _verify_cron_or_admin(authorization: str = None, x_admin_key: str = None):
     CRON_SECRET = os.getenv("CRON_SECRET")
-    if not CRON_SECRET:
-        raise HTTPException(status_code=500, detail="CRON_SECRET not configured")
-        
-    if not authorization or authorization != f"Bearer {CRON_SECRET}":
+    ADMIN_KEY = os.getenv("ADMIN_SECRET_KEY")
+    token = authorization.replace("Bearer ", "").strip() if authorization else ""
+    key = x_admin_key or token
+    is_cron = bool(CRON_SECRET and token == CRON_SECRET)
+    is_admin = bool(ADMIN_KEY and (key == ADMIN_KEY or token == ADMIN_KEY))
+    if not (is_cron or is_admin):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+def _verify_admin_only(authorization: str = None, x_admin_key: str = None):
+    ADMIN_KEY = os.getenv("ADMIN_SECRET_KEY")
+    token = authorization.replace("Bearer ", "").strip() if authorization else ""
+    key = x_admin_key or token
+    if not ADMIN_KEY or (key != ADMIN_KEY and token != ADMIN_KEY):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+@router.post("/payments/recover-queue")
+async def recover_payment_queue(authorization: str = Header(None), x_admin_key: str = Header(None)):
+    """
+    Processes unresolved rows in payment_recovery_queue.
+    These are users who paid successfully (payment.status = 'success') but whose
+    add_credit_bucket() or subscriptions INSERT failed inside the nested PL/pgSQL
+    exception block in process_successful_payment(). The payment was marked
+    success but credits were never granted.
+
+    This is SAFE to run repeatedly — add_credit_bucket() has a payment_id UNIQUE
+    idempotency guard so double-running will silently skip already-fixed users.
+
+    Auth: CRON_SECRET (Vercel Cron) or ADMIN_SECRET_KEY (manual admin trigger).
+    """
+    _verify_cron_or_admin(authorization, x_admin_key)
+
+    if not sc.supabase:
+        raise HTTPException(status_code=500, detail="Database not configured")
+
+    PLAN_CREDITS = {
+        "pay_per_use": 10,
+        "regular": 500,
+        "bulk_offer": 3000,
+        "student": 500,
+    }
+
+    try:
+        # Fetch up to 30 unresolved rows oldest-first
+        queue_res = await sb(
+            lambda: sc.supabase.table("payment_recovery_queue")
+            .select("id, order_id, user_id, plan_type, error_msg, created_at")
+            .eq("resolved", False)
+            .order("created_at", desc=False)
+            .limit(30)
+            .execute()
+        )
+
+        rows = queue_res.data or []
+        total_unresolved = len(rows)
+
+        if not rows:
+            return {"status": "ok", "fixed": 0, "skipped": 0, "total_unresolved": 0, "message": "No unresolved rows"}
+
+        fixed_count = 0
+        skipped_count = 0
+        errors = []
+
+        for row in rows:
+            row_id = row["id"]
+            order_id = row["order_id"]
+            user_id = row["user_id"]
+            plan_type = row["plan_type"]
+
+            try:
+                # 1. Verify the payment really is 'success' in payments table
+                pay_res = await sb(
+                    lambda oid=order_id: sc.supabase.table("payments")
+                    .select("razorpay_payment_id, status, plan_type")
+                    .eq("razorpay_order_id", oid)
+                    .execute()
+                )
+                if not pay_res.data:
+                    # Order not found — mark as resolved to stop retry loop
+                    await sb(lambda rid=row_id: sc.supabase.table("payment_recovery_queue")
+                             .update({"resolved": True})
+                             .eq("id", rid).execute())
+                    skipped_count += 1
+                    continue
+
+                pay_row = pay_res.data[0]
+                if pay_row["status"] != "success":
+                    # Payment not actually success — skip, don't resolve so reconcile can catch it
+                    skipped_count += 1
+                    continue
+
+                razorpay_payment_id = pay_row.get("razorpay_payment_id")
+                actual_plan_type = pay_row.get("plan_type") or plan_type
+
+                if not razorpay_payment_id:
+                    # No payment_id to use as idempotency key — skip
+                    skipped_count += 1
+                    continue
+
+                # 2. Check if credit_buckets already has this payment_id (already fixed)
+                bucket_res = await sb(
+                    lambda pid=razorpay_payment_id: sc.supabase.table("credit_buckets")
+                    .select("id")
+                    .eq("payment_id", pid)
+                    .execute()
+                )
+                if bucket_res.data:
+                    # Already fixed — just mark as resolved
+                    await sb(lambda rid=row_id: sc.supabase.table("payment_recovery_queue")
+                             .update({"resolved": True})
+                             .eq("id", rid).execute())
+                    fixed_count += 1
+                    print(f"[RecoverQueue] order={order_id} already has bucket — marked resolved")
+                    continue
+
+                # 3. Grant credits via add_credit_bucket RPC (idempotent by payment_id)
+                credits_to_add = PLAN_CREDITS.get(actual_plan_type, 0)
+                validity_days = (
+                    180 if actual_plan_type == "bulk_offer"
+                    else 60 if actual_plan_type in ("regular", "student")
+                    else 10
+                )
+
+                if credits_to_add == 0:
+                    print(f"[RecoverQueue] Unknown plan_type={actual_plan_type} for order={order_id} — skipping")
+                    skipped_count += 1
+                    continue
+
+                await sb(lambda uid=user_id, pt=actual_plan_type, c=credits_to_add,
+                              v=validity_days, pid=razorpay_payment_id:
+                    sc.supabase.rpc("add_credit_bucket", {
+                        "p_user_id": uid,
+                        "p_plan_type": pt,
+                        "p_amount": c,
+                        "p_validity_days": v,
+                        "p_payment_id": pid
+                    }).execute()
+                )
+
+                # 4. Ensure subscription row exists (ON CONFLICT DO NOTHING safe)
+                try:
+                    await sb(lambda uid=user_id, pt=actual_plan_type, c=credits_to_add,
+                                  v=validity_days, pid=razorpay_payment_id:
+                        sc.supabase.table("subscriptions").upsert({
+                            "user_id": uid,
+                            "plan_type": pt,
+                            "is_active": True,
+                            "credits_granted": c,
+                            "expires_at": None,  # Will be set by add_credit_bucket logic
+                            "payment_id": pid,
+                        }, on_conflict="payment_id").execute()
+                    )
+                except Exception as sub_err:
+                    # Non-critical — credits are already granted
+                    print(f"[RecoverQueue] Subscription upsert failed for order={order_id} (non-critical): {sub_err}")
+
+                # 5. Mark as resolved
+                await sb(lambda rid=row_id: sc.supabase.table("payment_recovery_queue")
+                         .update({"resolved": True})
+                         .eq("id", rid).execute())
+
+                fixed_count += 1
+                print(f"[RecoverQueue] FIXED order={order_id} user={user_id} plan={actual_plan_type} credits={credits_to_add}")
+
+            except Exception as row_err:
+                print(f"[RecoverQueue] Error processing row {row_id} (order={order_id}): {row_err}")
+                errors.append({"row_id": row_id, "order_id": order_id, "error": str(row_err)})
+
+        return {
+            "status": "ok",
+            "fixed": fixed_count,
+            "skipped": skipped_count,
+            "total_fetched": total_unresolved,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        print(f"[RecoverQueue] Fatal loop error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/payments/recovery-queue-status")
+async def get_recovery_queue_status(authorization: str = Header(None), x_admin_key: str = Header(None)):
+    """
+    Returns a summary of the payment_recovery_queue for the admin dashboard.
+    Shows unresolved count + recent entries so admins can see if any users are stuck.
+    Auth: X-Admin-Key or Authorization Bearer header.
+    """
+    _verify_admin_only(authorization, x_admin_key)
+
+    if not sc.supabase:
+        return {"unresolved": 0, "recent": []}
+
+    try:
+        unresolved_res = await sb(
+            lambda: sc.supabase.table("payment_recovery_queue")
+            .select("id, order_id, plan_type, error_msg, created_at")
+            .eq("resolved", False)
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+
+        count_res = await sb(
+            lambda: sc.supabase.table("payment_recovery_queue")
+            .select("id", count="exact")
+            .eq("resolved", False)
+            .execute()
+        )
+
+        total_unresolved = (
+            count_res.count
+            if hasattr(count_res, "count") and count_res.count is not None
+            else len(unresolved_res.data or [])
+        )
+
+        return {
+            "unresolved": total_unresolved,
+            "recent": unresolved_res.data or [],
+        }
+    except Exception as e:
+        print(f"[RecoverQueueStatus] Error: {e}")
+        return {"unresolved": 0, "recent": []}
+
+
+@router.get("/payments/pending-count")
+async def get_pending_payments_count(authorization: str = Header(None), x_admin_key: str = Header(None)):
+    """
+    Returns counts of pending payments:
+    - total pending payments
+    - payments pending for > 15 mins (stuck)
+    Auth: X-Admin-Key or Authorization Bearer header.
+    """
+    _verify_admin_only(authorization, x_admin_key)
+
+    if not sc.supabase:
+        return {"count": 0, "stuck_over_15m": 0}
+
+    try:
+        total_res = await sb(
+            lambda: sc.supabase.table("payments").select("id", count="exact")
+            .eq("status", "pending")
+            .execute()
+        )
+        cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        stuck_res = await sb(
+            lambda: sc.supabase.table("payments").select("id", count="exact")
+            .eq("status", "pending")
+            .lt("created_at", cutoff_time)
+            .execute()
+        )
+        total = total_res.count if hasattr(total_res, "count") and total_res.count is not None else 0
+        stuck = stuck_res.count if hasattr(stuck_res, "count") and stuck_res.count is not None else 0
+        return {"count": total, "stuck_over_15m": stuck}
+    except Exception as e:
+        print(f"[PendingCount] Error: {e}")
+        return {"count": 0, "stuck_over_15m": 0}
+
+
+@router.post("/payments/reconcile")
+async def reconcile_payments(authorization: str = Header(None), x_admin_key: str = Header(None)):
+    """
+    Finds pending payments older than 15 minutes and checks Razorpay API to see if they were paid.
+    Auth: CRON_SECRET (Vercel Cron) or ADMIN_SECRET_KEY (manual admin trigger).
+    """
+    _verify_cron_or_admin(authorization, x_admin_key)
 
     if not sc.supabase:
         raise HTTPException(status_code=500, detail="Database not configured")
 
     try:
-        # Fetch up to 50 pending payments older than 30 minutes
-        cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+        # Fetch up to 50 pending payments older than 15 minutes (Razorpay checkout sessions expire in ~15 mins)
+        cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
         pending_res = await sb(
             lambda: sc.supabase.table("payments").select("razorpay_order_id, user_id, plan_type")
             .eq("status", "pending")
