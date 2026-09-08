@@ -639,24 +639,13 @@ def _verify_admin_only(authorization: str = None, x_admin_key: str = None):
     if not ADMIN_KEY or (key != ADMIN_KEY and token != ADMIN_KEY):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-@router.post("/payments/recover-queue")
-async def recover_payment_queue(authorization: str = Header(None), x_admin_key: str = Header(None)):
+async def execute_recovery_queue() -> dict:
     """
     Processes unresolved rows in payment_recovery_queue.
-    These are users who paid successfully (payment.status = 'success') but whose
-    add_credit_bucket() or subscriptions INSERT failed inside the nested PL/pgSQL
-    exception block in process_successful_payment(). The payment was marked
-    success but credits were never granted.
-
-    This is SAFE to run repeatedly — add_credit_bucket() has a payment_id UNIQUE
-    idempotency guard so double-running will silently skip already-fixed users.
-
-    Auth: CRON_SECRET (Vercel Cron) or ADMIN_SECRET_KEY (manual admin trigger).
+    Safe to run repeatedly — add_credit_bucket() has a payment_id UNIQUE idempotency guard.
     """
-    _verify_cron_or_admin(authorization, x_admin_key)
-
     if not sc.supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
+        return {"status": "error", "message": "Database not configured"}
 
     PLAN_CREDITS = {
         "pay_per_use": 10,
@@ -801,7 +790,20 @@ async def recover_payment_queue(authorization: str = Header(None), x_admin_key: 
 
     except Exception as e:
         print(f"[RecoverQueue] Fatal loop error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/payments/recover-queue")
+async def recover_payment_queue(authorization: str = Header(None), x_admin_key: str = Header(None)):
+    """
+    Processes unresolved rows in payment_recovery_queue.
+    Auth: CRON_SECRET (Vercel Cron) or ADMIN_SECRET_KEY (manual admin trigger).
+    """
+    _verify_cron_or_admin(authorization, x_admin_key)
+    res = await execute_recovery_queue()
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message"))
+    return res
 
 
 @router.get("/payments/recovery-queue-status")
@@ -882,16 +884,12 @@ async def get_pending_payments_count(authorization: str = Header(None), x_admin_
         return {"count": 0, "stuck_over_15m": 0}
 
 
-@router.post("/payments/reconcile")
-async def reconcile_payments(authorization: str = Header(None), x_admin_key: str = Header(None)):
+async def execute_payment_reconciliation() -> dict:
     """
     Finds pending payments older than 15 minutes and checks Razorpay API to see if they were paid.
-    Auth: CRON_SECRET (Vercel Cron) or ADMIN_SECRET_KEY (manual admin trigger).
     """
-    _verify_cron_or_admin(authorization, x_admin_key)
-
     if not sc.supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
+        return {"status": "error", "message": "Database not configured"}
 
     try:
         # Fetch up to 50 pending payments older than 15 minutes (Razorpay checkout sessions expire in ~15 mins)
@@ -983,4 +981,17 @@ async def reconcile_payments(authorization: str = Header(None), x_admin_key: str
 
     except Exception as e:
         print(f"Reconciliation loop error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/payments/reconcile")
+async def reconcile_payments(authorization: str = Header(None), x_admin_key: str = Header(None)):
+    """
+    Finds pending payments older than 15 minutes and checks Razorpay API to see if they were paid.
+    Auth: CRON_SECRET (Vercel Cron) or ADMIN_SECRET_KEY (manual admin trigger).
+    """
+    _verify_cron_or_admin(authorization, x_admin_key)
+    res = await execute_payment_reconciliation()
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message"))
+    return res

@@ -16,14 +16,6 @@
     {
       "path": "/api/cron/cold-email?batch=300",
       "schedule": "30 13 * * *"
-    },
-    {
-      "path": "/api/cron/reconcile-payments",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/cron/recover-payments",
-      "schedule": "*/15 * * * *"
     }
   ]
 }

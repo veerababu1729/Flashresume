@@ -206,18 +206,16 @@ export default function PaymentHealthPanel() {
           className="rounded-2xl p-5 border bg-[#f8fffe] border-[#006859]/15"
         >
           <div className="text-xs font-bold uppercase tracking-wider text-[#595c5d] mb-2">
-            Auto-Crons Active
+            Auto Worker Active
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-xs">
               <Clock className="w-3.5 h-3.5 text-[#006859]" />
               <span className="font-semibold text-[#2c2f30]">Every 10 min</span>
-              <span className="text-[#595c5d]">• Reconcile pending</span>
+              <span className="text-[#595c5d]">• Auto-reconcile &amp; recover</span>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <Clock className="w-3.5 h-3.5 text-[#006859]" />
-              <span className="font-semibold text-[#2c2f30]">Every 15 min</span>
-              <span className="text-[#595c5d]">• Fix recovery queue</span>
+            <div className="text-[11px] text-[#006859] font-medium">
+              Runs 24/7 on Render backend
             </div>
           </div>
         </motion.div>

@@ -142,6 +142,31 @@ async def _stale_session_cleanup_loop():
 async def start_cleanup_loop():
     asyncio.create_task(_stale_session_cleanup_loop())
 
+
+async def _payment_health_worker_loop():
+    """Background worker: automatically reconciles pending payments and
+    processes the recovery queue every 10 minutes.
+    Runs 24/7 directly inside FastAPI on Render — completely free without
+    relying on Vercel Pro cron limits.
+    """
+    await asyncio.sleep(45)  # Wait 45s on server boot
+    while True:
+        try:
+            r_res = await payments.execute_payment_reconciliation()
+            if r_res.get("processed", 0) > 0:
+                print(f"[PaymentHealthWorker] Auto-reconciled {r_res['processed']} stuck payments.")
+            q_res = await payments.execute_recovery_queue()
+            if q_res.get("fixed", 0) > 0:
+                print(f"[PaymentHealthWorker] Auto-recovered {q_res['fixed']} users in recovery queue.")
+        except Exception as e:
+            print(f"[PaymentHealthWorker] Error in background cycle: {e}")
+        await asyncio.sleep(600)  # Every 10 minutes
+
+
+@app.on_event("startup")
+async def start_payment_worker():
+    asyncio.create_task(_payment_health_worker_loop())
+
 class PingRequest(BaseModel):
     user_id: str
 
