@@ -110,8 +110,8 @@ async def get_admin_stats():
 
         failed_query = sc.supabase.table("payments").select("id", count="exact").eq("status", "failed").gte("created_at", PROD_START_ISO)
 
-        # High-risk users: consecutive generations > 5 without a download — potential freeloader/scraper
-        high_risk_query = sc.supabase.table("users").select("id", count="exact").gt("fraud_tracker_counter", 5)
+        # High-risk users: consecutive generations >= 5 without a download — matches enforcement threshold in generate.py
+        high_risk_query = sc.supabase.table("users").select("id", count="exact").gte("fraud_tracker_counter", 5)
 
         results = await asyncio.gather(
             _sb_paginated(build_payments_query),
