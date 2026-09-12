@@ -669,7 +669,7 @@ export default function App() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60" />
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
               </span>
-              🎁 Refer &amp; get 20 credits —&nbsp;<span className="underline underline-offset-2">tap here</span>
+              🎁 Refer &amp; get 100 credits —&nbsp;<span className="underline underline-offset-2">tap here</span>
             </button>
           </>
         )}
@@ -736,7 +736,7 @@ export default function App() {
                     >
                       <Info className="w-3.5 h-3.5 opacity-70 hover:opacity-100 transition-opacity ml-1 cursor-help" />
                       <span className={`absolute top-full mt-2 left-1/2 -translate-x-1/2 ${activeTooltip === "nav" ? "block" : "hidden group-hover/tooltip:block"} bg-[#1a1a1f] text-white text-[10px] font-semibold leading-normal rounded-lg px-2.5 py-1.5 w-48 shadow-xl text-center pointer-events-none z-50`}>
-                        You will be credited +20 credits after your friend downloads his/her first resume. Hurry up!
+                        You will be credited +100 credits after your friend downloads his/her first resume. Hurry up!
                         <span className="absolute bottom-full left-1/2 -translate-x-1/2 border-[4px] border-transparent border-b-[#1a1a1f]"></span>
                       </span>
                     </div>
@@ -819,7 +819,7 @@ export default function App() {
                               >
                                 {/* Shimmer sweep */}
                                 <span className="referral-shine-sweep pointer-events-none absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent" aria-hidden="true" />
-                                🎁 {copied ? "Link Copied!" : "Invite Friends (+20 Credits)"}
+                                🎁 {copied ? "Link Copied!" : "Invite Friends (+100 Credits)"}
                                 <div
                                   className="relative group/tooltip inline-flex items-center"
                                   onClick={(e) => {
@@ -831,7 +831,7 @@ export default function App() {
                                 >
                                   <Info className="w-3.5 h-3.5 opacity-70 hover:opacity-100 transition-opacity ml-1 cursor-help" />
                                   <span className={`absolute right-full mr-2 top-1/2 -translate-y-1/2 ${activeTooltip === "dropdown" ? "block" : "hidden group-hover/tooltip:block"} bg-[#1a1a1f] text-white text-[10px] font-semibold leading-normal rounded-lg px-2.5 py-1.5 w-48 shadow-xl text-center pointer-events-none z-50`}>
-                                    You will be credited +20 credits after your friend downloads his/her first resume. Hurry up!
+                                    You will be credited +100 credits after your friend downloads his/her first resume. Hurry up!
                                     <span className="absolute left-full top-1/2 -translate-y-1/2 border-[4px] border-transparent border-l-[#1a1a1f]"></span>
                                   </span>
                                 </div>

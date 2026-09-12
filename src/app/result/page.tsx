@@ -1127,7 +1127,7 @@ export default function ResultPage() {
                               >
                                 {/* Shimmer sweep */}
                                 <span className="referral-shine-sweep pointer-events-none absolute inset-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent" aria-hidden="true" />
-                                🎁 Invite Friends (+20 Credits)
+                                🎁 Invite Friends (+100 Credits)
                               </button>
                             </>
                           )}

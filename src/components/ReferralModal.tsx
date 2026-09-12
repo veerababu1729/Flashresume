@@ -69,10 +69,10 @@ export default function ReferralModal({ referralCode, onClose }: Props) {
             <Gift className="w-8 h-8 text-green-600" />
           </div>
           <h3 className="font-bold text-xl text-gray-800 mb-2 leading-tight">
-            Share your friend and get bonus 20 credits free
+            Share your friend and get bonus 100 credits free
           </h3>
           <p className="text-sm text-gray-500 mb-6 px-2">
-            Invite your friends to try Flashresume. You'll instantly receive 20 free credits when they download their first resume!
+            Invite your friends to try Flashresume. You'll instantly receive 100 free credits when they download their first resume!
           </p>
         </div>
 

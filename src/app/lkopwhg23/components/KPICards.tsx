@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   Users, TrendingUp, Download, CreditCard,
-  ArrowUpRight, Activity, AlertCircle, ShieldAlert
+  ArrowUpRight, Activity, AlertCircle, ShieldAlert, Percent
 } from "lucide-react";
 
 // -- Animated counter hook --------------------------------------------------
@@ -30,7 +30,7 @@ function formatINR(n: number) {
 interface KPI {
   label: string;
   value: number;
-  format?: "number" | "inr";
+  format?: "number" | "inr" | "percent";
   icon: React.ReactNode;
   iconBg: string;
   delta: string;
@@ -39,8 +39,13 @@ interface KPI {
 }
 
 function KPICard({ kpi, delay }: { kpi: KPI; delay: number }) {
-  const count = useCountUp(kpi.value);
-  const display = kpi.format === "inr" ? formatINR(count) : count.toLocaleString("en-IN");
+  const count = useCountUp(kpi.format === "percent" ? Math.round(kpi.value * 10) : kpi.value);
+  const display =
+    kpi.format === "inr"
+      ? formatINR(count)
+      : kpi.format === "percent"
+      ? (count / 10).toFixed(1) + "%"
+      : count.toLocaleString("en-IN");
 
   return (
     <motion.div
@@ -128,6 +133,16 @@ export default function KPICards({ onlineUsers, stats }: { onlineUsers: number, 
       delta: "Active",
       deltaPositive: true,
       note: "Total unique paid users",
+    },
+    {
+      label: "Conversion Rate",
+      value: stats?.totalLogins ? parseFloat(((stats.subscribers / stats.totalLogins) * 100).toFixed(1)) : 0,
+      format: "percent",
+      icon: <Percent className="w-5 h-5 text-emerald-700" />,
+      iconBg: "bg-emerald-50",
+      delta: "Signups → Paid",
+      deltaPositive: true,
+      note: `${stats?.subscribers || 0} paid of ${stats?.totalLogins || 0} signups`,
     },
     {
       label: "Total Downloads",

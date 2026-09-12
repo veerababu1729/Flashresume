@@ -176,7 +176,7 @@ async def verify_payment(body: VerifyRequest, authorization: str = Header(None))
                     await sb(lambda: sc.supabase.rpc("add_credit_bucket", {
                         "p_user_id": referrer_id,
                         "p_plan_type": "referral",
-                        "p_amount": 20,
+                        "p_amount": 100,
                         "p_validity_days": None,
                         "p_payment_id": f"ref_{body.razorpay_payment_id}"
                     }).execute())
@@ -584,7 +584,7 @@ async def razorpay_webhook(request: Request):
                     await sb(lambda: sc.supabase.rpc("add_credit_bucket", {
                         "p_user_id": referrer_id,
                         "p_plan_type": "referral",
-                        "p_amount": 20,
+                        "p_amount": 100,
                         "p_validity_days": None,
                         "p_payment_id": f"ref_{payment_id}"
                     }).execute())
