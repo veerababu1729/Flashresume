@@ -179,7 +179,7 @@ export default function ReferralModal({ referralCode, onClose }: Props) {
         </div>
 
         {/* Native share button — only on real iOS/Android */}
-        {mobile && navigator.share && (
+        {mobile && typeof navigator.share === "function" && (
           <button
             onClick={handleNativeShare}
             className="w-full flex items-center justify-center gap-2 border border-gray-200
