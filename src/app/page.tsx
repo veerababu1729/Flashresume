@@ -39,6 +39,7 @@ import CreditBadge from "@/components/CreditBadge";
 import TemplatesCarousel from "@/components/TemplatesCarousel";
 import ModelSelector from "@/components/ModelSelector";
 import OnboardingTour from "@/components/OnboardingTour";
+import ReferralModal from "@/components/ReferralModal";
 import ReviewsMarquee from "@/components/ReviewsMarquee";
 
 // -- Animated counter hook --------------------------------------------------
@@ -208,6 +209,7 @@ export default function App() {
   const [optimizeMode, setOptimizeMode] = useState<"jd" | "manual" | "first_resume" | null>("jd");
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<"nav" | "dropdown" | null>(null);
@@ -595,44 +597,12 @@ export default function App() {
     }
   };
 
-  const handleShare = async () => {
+  // Open the ReferralModal which handles all platforms correctly:
+  // - Desktop (Linux/Windows/Mac): shows WhatsApp Web, Email, Twitter, LinkedIn + copy link
+  // - Mobile (iOS/Android): shows native share sheet + the same panel
+  const handleShare = () => {
     if (!referralCode) return;
-    const url = `${window.location.origin}/?ref=${referralCode}`;
-
-    // 1. Copy to clipboard synchronously first. 
-    // iOS Safari blocks clipboard access if it happens after an 'await'.
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(url).catch(() => { });
-      } else {
-        const textArea = document.createElement("textarea");
-        textArea.value = url;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textArea);
-      }
-    } catch (e) {
-      // Ignore copy errors
-    }
-
-    // 2. Attempt native share sheet
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: "Flashresume",
-          text: "I used Flashresume to rebuild my resume in 60 seconds! Must try.",
-          url: url,
-        });
-        return;
-      } catch (err: any) {
-        if (err.name === "AbortError") return;
-      }
-    }
-
-    // 3. If native share fails or isn't supported, show "Copied" UI
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setShowReferralModal(true);
   };
 
   return (
@@ -1888,6 +1858,14 @@ Pursuing or completed a degree in Computer Science, Engineering, or equivalent t
         prefetchedCredits={credits}
         loginOnly={true}
       />
+
+      {/* Referral share modal — works on all platforms (Linux/Windows/Android/iOS) */}
+      {showReferralModal && referralCode && (
+        <ReferralModal
+          referralCode={referralCode}
+          onClose={() => setShowReferralModal(false)}
+        />
+      )}
     </div>
   );
 }
