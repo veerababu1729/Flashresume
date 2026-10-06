@@ -177,6 +177,148 @@ async def get_admin_stats():
         return stats
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Signup Analytics — signups, paid users, conversion rate, dual-series trend
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/admin/analytics/signups", dependencies=[Depends(require_admin)])
+async def get_analytics_signups(
+    time_filter: str = "all",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    if not sc.supabase:
+        return {}
+
+    now = datetime.now(timezone.utc)
+    dt_start = None
+    dt_end = now
+
+    if time_filter == "today":
+        ist_now = now + IST_OFFSET
+        ist_midnight = ist_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        dt_start = ist_midnight - IST_OFFSET
+    elif time_filter == "week":
+        dt_start = now - timedelta(days=7)
+    elif time_filter == "month":
+        dt_start = now - timedelta(days=30)
+    elif time_filter == "custom" and start_date and end_date:
+        try:
+            dt_start = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+            dt_end = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
+            dt_end = dt_end.replace(hour=23, minute=59, second=59)
+        except Exception:
+            pass
+
+    if not dt_start or dt_start < PROD_START_DATE:
+        dt_start = PROD_START_DATE
+
+    try:
+        dev_user_ids = await get_dev_user_ids()
+
+        # Fetch all signups in window (users.created_at)
+        def build_signups_query():
+            q = sc.supabase.table("users").select("id, created_at")
+            if dt_start:
+                q = q.gte("created_at", dt_start.isoformat())
+            if dt_end:
+                q = q.lte("created_at", dt_end.isoformat())
+            if dev_user_ids:
+                q = q.not_.in_("id", dev_user_ids)
+            return q
+
+        # Fetch all paid users in window (payments.created_at with status=success)
+        def build_paid_query():
+            q = sc.supabase.table("payments").select("user_id, created_at").eq("status", "success")
+            if dt_start:
+                q = q.gte("created_at", dt_start.isoformat())
+            if dt_end:
+                q = q.lte("created_at", dt_end.isoformat())
+            if dev_user_ids:
+                dev_ids_str = ",".join(dev_user_ids)
+                q = q.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+            return q
+
+        signups_rows, paid_rows = await asyncio.gather(
+            _sb_paginated(build_signups_query),
+            _sb_paginated(build_paid_query),
+        )
+
+        total_signups = len(signups_rows)
+
+        # ── Option A: Cohort-based conversion ────────────────────────────────
+        # Build signup_id → created_at map so rate never exceeds 100 %.
+        # We fetch ALL-TIME payments only for users who signed up in the window.
+        signup_id_to_ts: dict[str, str] = {r["id"]: r["created_at"] for r in signups_rows}
+
+        cohort_payments: list = []
+        if signup_id_to_ts:
+            def build_cohort_payments_query():
+                return (
+                    sc.supabase.table("payments")
+                    .select("user_id, created_at")
+                    .eq("status", "success")
+                    .in_("user_id", list(signup_id_to_ts.keys()))
+                )
+            cohort_payments = await _sb_paginated(build_cohort_payments_query)
+
+        # Group all-time cohort payments by user_id
+        from collections import defaultdict
+        user_payment_dates: dict[str, list] = defaultdict(list)
+        for p in cohort_payments:
+            uid = p.get("user_id")
+            if uid and uid in signup_id_to_ts:
+                user_payment_dates[uid].append(p["created_at"])
+
+        total_paid = len(user_payment_dates)          # unique cohort users who ever paid
+        conversion_rate = round((total_paid / total_signups * 100), 2) if total_signups > 0 else 0.0
+
+        # ── Delayed converters ────────────────────────────────────────────────
+        # Users who signed up in the window AND whose FIRST-EVER payment landed
+        # on a different IST calendar day than their signup day.
+        # Only the earliest payment is considered (true "came back later" signal).
+        delayed_converters = 0
+        for uid, pay_ts_list in user_payment_dates.items():
+            signup_ts = signup_id_to_ts[uid]
+            try:
+                signup_dt  = datetime.fromisoformat(signup_ts.replace("Z", "+00:00"))
+                signup_day = (signup_dt + IST_OFFSET).date()
+            except Exception:
+                continue
+            # Find the earliest payment timestamp
+            parsed_pay_dates = []
+            for pts in pay_ts_list:
+                try:
+                    parsed_pay_dates.append(datetime.fromisoformat(pts.replace("Z", "+00:00")))
+                except Exception:
+                    continue
+            if not parsed_pay_dates:
+                continue
+            first_payment_dt  = min(parsed_pay_dates)
+            first_payment_day = (first_payment_dt + IST_OFFSET).date()
+            if first_payment_day != signup_day:
+                delayed_converters += 1
+
+        # Build per-bucket trend for both series
+        signup_trend = build_trend_data(signups_rows, dt_start, dt_end, time_filter, value_key=None)
+        paid_trend   = build_trend_data(paid_rows,   dt_start, dt_end, time_filter, value_key=None)
+
+        # Merge into a dual-series list  [{label, signups, paid}, ...]
+        trend = []
+        for s, p in zip(signup_trend, paid_trend):
+            trend.append({"label": s["label"], "signups": s["value"], "paid": p["value"]})
+
+        return {
+            "total_signups":      total_signups,
+            "total_paid":         total_paid,
+            "conversion_rate":    conversion_rate,
+            "delayed_converters": delayed_converters,
+            "trend":              trend,
+        }
+    except Exception as e:
+        print(f"Signup Analytics Error: {e}")
+        return {}
+
+
 @router.get("/admin/analytics/revenue", dependencies=[Depends(require_admin)])
 async def get_analytics_revenue(
     time_filter: str = "all", 

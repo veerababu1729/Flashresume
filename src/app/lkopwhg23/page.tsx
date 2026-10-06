@@ -15,12 +15,14 @@ import FunnelChart from "./components/FunnelChart";
 import FeedbackPanel from "./components/FeedbackPanel";
 import AffiliatePanel from "./components/AffiliatePanel";
 import PaymentHealthPanel from "./components/PaymentHealthPanel";
+import SignupAnalyticsPanel from "./components/SignupAnalyticsPanel";
 // supabase import removed — Realtime channel replaced with lightweight backend poll
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const NAV_ITEMS = [
   { id: "overview",        label: "Overview",         icon: LayoutDashboard },
+  { id: "signups",         label: "Signups",          icon: Users },
   { id: "feedback",        label: "Feedback",         icon: Star },
   { id: "revenue",         label: "Revenue",          icon: IndianRupee },
   { id: "downloads",       label: "Downloads",        icon: Download },
@@ -307,6 +309,15 @@ export default function AdminPage() {
               subtitle="Platform health at a glance"
             />
             <KPICards onlineUsers={onlineUsers} stats={stats} />
+          </section>
+
+          {/* -- Signups & Conversion -------------------------------- */}
+          <section id="signups" ref={setRef("signups")}>
+            <SectionTitle
+              title="Signups & Conversion"
+              subtitle="Track new signups, paid users, and conversion rate over time"
+            />
+            <SignupAnalyticsPanel />
           </section>
 
           {/* -- Feedback ------------------------------------------- */}
