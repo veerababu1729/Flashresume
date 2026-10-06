@@ -247,11 +247,25 @@ async def get_analytics_signups(
 
         # ── Option A: Cohort-based conversion ────────────────────────────────
         # Build signup_id → created_at map so rate never exceeds 100 %.
-        # We fetch ALL-TIME payments only for users who signed up in the window.
         signup_id_to_ts: dict[str, str] = {r["id"]: r["created_at"] for r in signups_rows}
 
-        cohort_payments: list = []
-        if signup_id_to_ts:
+        from collections import defaultdict
+        user_payment_dates: dict[str, list] = defaultdict(list)
+
+        if time_filter == "all":
+            # For "all time", paid_rows already spans the full date range
+            # (PROD_START_DATE → now).  No extra DB query needed — just filter
+            # paid_rows by the signup cohort to avoid a huge .in_() URL that
+            # Supabase would reject when the cohort is large.
+            for p in paid_rows:
+                uid = p.get("user_id")
+                if uid and uid in signup_id_to_ts:
+                    user_payment_dates[uid].append(p["created_at"])
+        elif signup_id_to_ts:
+            # For bounded windows (today / week / month / custom) the cohort is
+            # small enough for .in_().  We fetch ALL-TIME payments for those
+            # users so someone who signed up this week but paid yesterday still
+            # counts as converted.
             def build_cohort_payments_query():
                 return (
                     sc.supabase.table("payments")
@@ -260,14 +274,10 @@ async def get_analytics_signups(
                     .in_("user_id", list(signup_id_to_ts.keys()))
                 )
             cohort_payments = await _sb_paginated(build_cohort_payments_query)
-
-        # Group all-time cohort payments by user_id
-        from collections import defaultdict
-        user_payment_dates: dict[str, list] = defaultdict(list)
-        for p in cohort_payments:
-            uid = p.get("user_id")
-            if uid and uid in signup_id_to_ts:
-                user_payment_dates[uid].append(p["created_at"])
+            for p in cohort_payments:
+                uid = p.get("user_id")
+                if uid and uid in signup_id_to_ts:
+                    user_payment_dates[uid].append(p["created_at"])
 
         total_paid = len(user_payment_dates)          # unique cohort users who ever paid
         conversion_rate = round((total_paid / total_signups * 100), 2) if total_signups > 0 else 0.0
