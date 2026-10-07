@@ -252,61 +252,90 @@ async def get_analytics_signups(
         from collections import defaultdict
         user_payment_dates: dict[str, list] = defaultdict(list)
 
-        if time_filter == "all":
-            # For "all time", paid_rows already spans the full date range
-            # (PROD_START_DATE → now).  No extra DB query needed — just filter
-            # paid_rows by the signup cohort to avoid a huge .in_() URL that
-            # Supabase would reject when the cohort is large.
-            for p in paid_rows:
-                uid = p.get("user_id")
-                if uid and uid in signup_id_to_ts:
-                    user_payment_dates[uid].append(p["created_at"])
-        elif signup_id_to_ts:
-            # For bounded windows (today / week / month / custom) the cohort is
-            # small enough for .in_().  We fetch ALL-TIME payments for those
-            # users so someone who signed up this week but paid yesterday still
-            # counts as converted.
-            def build_cohort_payments_query():
-                return (
-                    sc.supabase.table("payments")
-                    .select("user_id, created_at")
-                    .eq("status", "success")
-                    .in_("user_id", list(signup_id_to_ts.keys()))
-                )
-            cohort_payments = await _sb_paginated(build_cohort_payments_query)
-            for p in cohort_payments:
-                uid = p.get("user_id")
-                if uid and uid in signup_id_to_ts:
-                    user_payment_dates[uid].append(p["created_at"])
+        # Users can only pay ON or AFTER their signup date, so paid_rows
+        # (which starts at dt_start for all filters) already contains every
+        # possible payment for any signup cohort user.
+        for p in paid_rows:
+            uid = p.get("user_id")
+            if uid and uid in signup_id_to_ts:
+                user_payment_dates[uid].append(p["created_at"])
 
         total_paid = len(user_payment_dates)          # unique cohort users who ever paid
         conversion_rate = round((total_paid / total_signups * 100), 2) if total_signups > 0 else 0.0
 
-        # ── Delayed converters ────────────────────────────────────────────────
-        # Users who signed up in the window AND whose FIRST-EVER payment landed
-        # on a different IST calendar day than their signup day.
-        # Only the earliest payment is considered (true "came back later" signal).
+        # ── Independent Delayed Converters ────────────────────────────────
+        # Users whose FIRST-EVER payment fell within the selected window AND
+        # on a different IST calendar day from their signup date.
+        # No large .in_() calls — uses a date-only query for prior payers.
         delayed_converters = 0
-        for uid, pay_ts_list in user_payment_dates.items():
-            signup_ts = signup_id_to_ts[uid]
-            try:
-                signup_dt  = datetime.fromisoformat(signup_ts.replace("Z", "+00:00"))
-                signup_day = (signup_dt + IST_OFFSET).date()
-            except Exception:
-                continue
-            # Find the earliest payment timestamp
-            parsed_pay_dates = []
-            for pts in pay_ts_list:
-                try:
-                    parsed_pay_dates.append(datetime.fromisoformat(pts.replace("Z", "+00:00")))
-                except Exception:
-                    continue
-            if not parsed_pay_dates:
-                continue
-            first_payment_dt  = min(parsed_pay_dates)
-            first_payment_day = (first_payment_dt + IST_OFFSET).date()
-            if first_payment_day != signup_day:
-                delayed_converters += 1
+
+        in_window_pay_per_user: dict[str, list[str]] = defaultdict(list)
+        for p in paid_rows:
+            uid = p.get("user_id")
+            if uid:
+                in_window_pay_per_user[uid].append(p["created_at"])
+        paying_user_ids = set(in_window_pay_per_user.keys())
+
+        if paying_user_ids:
+            # Find users who paid BEFORE this window — date-only filter,
+            # no user_id IN clause, so no URL-length risk at any scale.
+            def build_prior_payers_query():
+                q = (sc.supabase.table("payments")
+                     .select("user_id")
+                     .eq("status", "success")
+                     .lt("created_at", dt_start.isoformat()))
+                if dev_user_ids:
+                    dev_ids_str = ",".join(dev_user_ids)
+                    q = q.or_(f"user_id.is.null,user_id.not.in.({dev_ids_str})")
+                return q
+
+            prior_pay_rows = await _sb_paginated(build_prior_payers_query)
+            prior_payer_ids = {r["user_id"] for r in prior_pay_rows if r.get("user_id")}
+
+            # Only users making their VERY FIRST payment in this window
+            first_time_payers = paying_user_ids - prior_payer_ids
+
+            if first_time_payers:
+                # Signup dates — signups_rows already covers window cohort.
+                # For users who signed up before the window, do a small .in_()
+                # (first_time_payers is always a small set).
+                signup_date_lookup: dict[str, str] = {}
+                for r in signups_rows:
+                    if r["id"] in first_time_payers:
+                        signup_date_lookup[r["id"]] = r["created_at"]
+
+                missing_signup_ids = first_time_payers - set(signup_date_lookup.keys())
+                if missing_signup_ids:
+                    def build_missing_signup_query():
+                        return (sc.supabase.table("users")
+                                .select("id, created_at")
+                                .in_("id", list(missing_signup_ids)))
+                    missing_user_rows = await _sb_paginated(build_missing_signup_query)
+                    for u in missing_user_rows:
+                        signup_date_lookup[u["id"]] = u["created_at"]
+
+                for uid in first_time_payers:
+                    signup_ts = signup_date_lookup.get(uid)
+                    if not signup_ts:
+                        continue
+                    pay_ts_list = in_window_pay_per_user[uid]
+                    parsed_pays = []
+                    for pts in pay_ts_list:
+                        try:
+                            parsed_pays.append(datetime.fromisoformat(pts.replace("Z", "+00:00")))
+                        except Exception:
+                            continue
+                    if not parsed_pays:
+                        continue
+                    first_pay_dt  = min(parsed_pays)
+                    first_pay_day = (first_pay_dt + IST_OFFSET).date()
+                    try:
+                        signup_dt  = datetime.fromisoformat(signup_ts.replace("Z", "+00:00"))
+                        signup_day = (signup_dt + IST_OFFSET).date()
+                    except Exception:
+                        continue
+                    if first_pay_day != signup_day:
+                        delayed_converters += 1
 
         # Build per-bucket trend for both series
         signup_trend = build_trend_data(signups_rows, dt_start, dt_end, time_filter, value_key=None)
@@ -325,7 +354,9 @@ async def get_analytics_signups(
             "trend":              trend,
         }
     except Exception as e:
+        import traceback
         print(f"Signup Analytics Error: {e}")
+        traceback.print_exc()
         return {}
 
 
